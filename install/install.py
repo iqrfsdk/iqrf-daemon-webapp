@@ -30,8 +30,8 @@ ARGS.add_argument("-v", "--ver", action="store", dest="ver", required=True, type
 ARGS.add_argument("-s", "--stability", action="store", dest="stability", default="stable", type=str, help="The stability of the IQRF Gateway Daemon webapp.")
 
 GIT_REPOSOTORY = "https://github.com/iqrfsdk/iqrf-daemon-webapp"
-WEBSERVER_DIRECTORY = "/var/www"
-WEBAPP_DIRECTORY = WEBSERVER_DIRECTORY + "/iqrf-daemon-webapp"
+WEBSERVER_DIRECTORY = "/var/www/"
+WEBAPP_DIRECTORY = WEBSERVER_DIRECTORY + "iqrf-daemon-webapp/"
 SUDOERS_FILE = "/etc/sudoers"
 
 def send_command(cmd):
@@ -99,7 +99,6 @@ def install_debian(version, stability="stable", branch=None):
 		disable_default_nginx_virtualhost()
 		create_nginx_virtualhost("iqrf-daemon-webapp_php7-0.localhost")
 		fix_php_fpm_config("/etc/php/7.0/fpm/php.ini")
-		chown_dir(WEBAPP_DIRECTORY)
 		enable_sudo()
 		restart_service("sudo")
 		restart_service("php7.0-fpm")
@@ -119,7 +118,6 @@ def install_ubuntu(version, stability="stable", branch=None):
 		disable_default_nginx_virtualhost()
 		create_nginx_virtualhost("iqrf-daemon-webapp_php7-0.localhost")
 		fix_php_fpm_config("/etc/php/7.0/fpm/php.ini")
-		chown_dir(WEBAPP_DIRECTORY)
 		enable_sudo()
 		restart_service("sudo")
 		restart_service("php7.0-fpm")
@@ -132,43 +130,36 @@ def install_webapp(stability, branch):
 	@param branch Git branch
 	"""
 	if stability == "dev":
-		install_php_app(WEBAPP_DIRECTORY, True, branch)
+		install_php_app(branch)
 	elif stability == "stable" and (branch != "master" or branch != None):
-		install_php_app(WEBAPP_DIRECTORY, True, branch)
-	else:
-		install_php_app(WEBAPP_DIRECTORY, False, branch)
+		install_php_app(branch)
 
-def install_php_app(directory, use_git=True, branch=None):
+def install_php_app(branch=None):
 	"""
 	Install IQRF Gateway Daemon webapp
-	@param directory Directory to install IQRF Gateway Daemon webapp
-	@param use_git Download IQRF Gateway Daemon webapp from git
 	@param branch Git branch
 	"""
-	if use_git:
-		if os.path.isdir(directory) and os.path.isdir(directory + "/.git"):
-			send_command("cd " + directory + "/../ ; git clone " + GIT_REPOSOTORY)
-			if branch != None:
-				send_command("cd " + directory + " ; git checkout " + branch)
-			send_command("cd " + directory + " ; composer install")
-		elif os.path.isdir(directory) and not os.path.isdir(directory + "/.git"):
-			send_command("rm -rf " + directory)
-			send_command("cd " + directory + "/../ ; git clone " + GIT_REPOSOTORY)
-			if branch != None:
-				send_command("cd " + directory + " ; git checkout " + branch)
-			send_command("cd " + directory + " ; composer install")
-		else:
-			send_command("rm -rf " + directory + "/temp/cache")
-			send_command("cd " + directory + " ; git pull origin")
-			if branch != None:
-				send_command("cd " + directory + " ; git checkout " + branch)
-			send_command("cd " + directory + " ; composer update")
+	if os.path.isdir(WEBAPP_DIRECTORY) and os.path.isdir(WEBAPP_DIRECTORY + "/.git"):
+		send_command("rm -rf " + WEBAPP_DIRECTORY + "/temp/cache")
+		send_command("cd " + WEBAPP_DIRECTORY + "; git pull origin")
+		if branch != None:
+			send_command("cd " + WEBAPP_DIRECTORY + "; git checkout " + branch)
+		send_command("cd " + WEBAPP_DIRECTORY + "; git reset --hard")
+		send_command("cd " + WEBAPP_DIRECTORY + "; composer update")
+	elif os.path.isdir(WEBAPP_DIRECTORY) and not os.path.isdir(WEBAPP_DIRECTORY + "/.git"):
+		send_command("rm -rf " + WEBAPP_DIRECTORY)
+		send_command("cd " + WEBSERVER_DIRECTORY + "; git clone " + GIT_REPOSOTORY)
+		if branch != None:
+			send_command("cd " + WEBAPP_DIRECTORY + "; git checkout " + branch)
+		send_command("cd " + WEBAPP_DIRECTORY + "; composer install")
 	else:
-		if os.path.isdir(directory):
-			send_command("cd " + directory + "/../ ; rm -rf iqrf-daemon-webapp")
-		send_command("cd " + directory + "/../ ; composer create-project iqrfsdk/iqrf-daemon-webapp")
-	send_command("chmod 777 log/")
-	send_command("chmod 777 temp/")
+		send_command("cd " + WEBSERVER_DIRECTORY + "; git clone " + GIT_REPOSOTORY)
+		if branch != None:
+			send_command("cd " + WEBAPP_DIRECTORY + "; git checkout " + branch)
+		send_command("cd " + WEBAPP_DIRECTORY + "; composer install")
+	send_command("chmod 777 " + WEBAPP_DIRECTORY + "/log/")
+	send_command("chmod 777 " + WEBAPP_DIRECTORY + "/temp/")
+	chown_dir(WEBAPP_DIRECTORY)
 
 
 def chmod_dir(directory="/etc/iqrf-daemon"):
@@ -216,20 +207,19 @@ def fix_php_fpm_config(config_file):
 	"""
 	send_command("sed -i 's/;cgi\.fix_pathinfo=1/cgi\.fix_pathinfo=0/g' " + config_file)
 
-def enable_sudo(sudoers_file=SUDOERS_FILE, user="www-data"):
+def enable_sudo(user="www-data"):
 	"""
 	Enable sudo for specific user
-	@param sudoers_file Path to sudoers file (usually /etc/sudoers)
 	@param user User
 	"""
 	found = False
 	sudoers = user + " ALL=(ALL) NOPASSWD:ALL"
-	with fileinput.FileInput(sudoers_file) as file:
+	with fileinput.FileInput(SUDOERS_FILE) as file:
 		for line in file:
 			if line.strip() == sudoers:
 				found = True
 	if not found:
-		send_command("echo \"" + sudoers + "\" >> " + sudoers_file)
+		send_command("echo \"" + sudoers + "\" >> " + SUDOERS_FILE)
 
 def restart_service(name):
 	"""
